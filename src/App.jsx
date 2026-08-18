@@ -76,10 +76,9 @@ function buildReportData(sessions) {
     const key = todayStr(d);
     const label = d.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '');
     const entry = { date: key, label };
-    POLES.forEach(p => { entry[p.id] = 0; });
+    ALL_CATEGORIES.forEach(c => { entry[c.id] = 0; });
     sessions.filter(s => s.date === key).forEach(s => {
-      const c = catInfo(s.category);
-      if (c) entry[c.poleId] = (entry[c.poleId] || 0) + s.minutes;
+      entry[s.category] = (entry[s.category] || 0) + s.minutes;
     });
     days.push(entry);
   }
@@ -94,7 +93,7 @@ const StampSVG = ({ color, label, minutes }) => (
       <path id="curve" d="M 100,100 m -62,0 a 62,62 0 1,1 124,0 a 62,62 0 1,1 -124,0" />
     </defs>
     <text fill={color} fontSize="15" fontFamily="'IBM Plex Mono', monospace" letterSpacing="2" fontWeight="600">
-      <textPath href="#curve" startOffset="50%" textAnchor="middle">BON À TIRER</textPath>
+      <textPath href="#curve" startOffset="50%" textAnchor="middle">TRAVAIL FINI</textPath>
     </text>
     <text x="100" y="102" textAnchor="middle" fill={color} fontSize="12" fontFamily="'Fraunces', serif" fontWeight="600">{label}</text>
     <text x="100" y="122" textAnchor="middle" fill={color} fontSize="11" fontFamily="'IBM Plex Mono', monospace">{minutes} min</text>
@@ -278,6 +277,9 @@ export default function EditionsBookmark() {
           background:transparent; cursor:pointer; display:flex; align-items:center; gap:7px; color:var(--ink); }
         .cat-btn .dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
         .cat-btn.active{ border-color:var(--ink); font-weight:600; }
+        .legend{ display:flex; flex-wrap:wrap; gap:10px 16px; margin-top:14px; }
+        .legend-item{ display:flex; align-items:center; gap:6px; font-size:11px; color:var(--ink-soft); }
+        .legend-item .dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
         .timer-zone{ text-align:center; padding:20px 0 8px; }
         .clock-card{ border:1.5px dashed var(--ink-soft); padding:14px 20px; display:inline-block; margin-top:14px; }
         .clock-card .cc-label{ font-family:'IBM Plex Mono',monospace; font-size:10px; text-transform:uppercase;
@@ -410,14 +412,14 @@ export default function EditionsBookmark() {
 
         {view === 'focus' && (
           <div className="card">
-            <div className="section-title">Carnet de tirages</div>
+            <div className="section-title">Carnet de suivi</div>
             {recentLog.length === 0 && <div className="empty">Aucun tirage enregistré pour l'instant. Lancez votre première session ci-dessus.</div>}
             {recentLog.map(s => {
               const c = catInfo(s.category);
               return (
                 <div className="log-row" key={s.id}>
                   <span className="log-dot" style={{ background: c.color }} />
-                  <span className="log-cat">{c.label}</span>
+                  <span className="log-cat">{c.poleLabel} · {c.label}</span>
                   <span className="log-meta">{fmtHM(s.minutes)} · {s.entryTime}–{s.exitTime} · {s.date}</span>
                 </div>
               );
@@ -436,11 +438,18 @@ export default function EditionsBookmark() {
                   <YAxis tick={{ fontFamily: 'IBM Plex Mono', fontSize: 10, fill: 'var(--ink-soft)' }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ fontFamily: 'Inter', fontSize: 12, border: '1px solid #21201a' }}
                     formatter={(value, name) => [fmtHM(value), name]} />
-                  {POLES.map(p => (
-                    <Bar key={p.id} dataKey={p.id} stackId="a" fill={p.color} name={p.label} radius={0} />
+                  {ALL_CATEGORIES.map(c => (
+                    <Bar key={c.id} dataKey={c.id} stackId="a" fill={c.color} name={c.label} radius={0} />
                   ))}
                 </BarChart>
               </ResponsiveContainer>
+              <div className="legend">
+                {ALL_CATEGORIES.map(c => (
+                  <div className="legend-item" key={c.id}>
+                    <span className="dot" style={{ background: c.color }} />{c.label}
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div className="status-bar">
