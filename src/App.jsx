@@ -115,6 +115,7 @@ export default function EditionsBookmark() {
   const [tooShort, setTooShort] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
   const [exportPeriod, setExportPeriod] = useState('week');
+  const [reportPoleFilter, setReportPoleFilter] = useState('all');
   const intervalRef = useRef(null);
 
   const STORAGE_KEY = 'eb-sessions';
@@ -233,6 +234,7 @@ export default function EditionsBookmark() {
   const cat = catInfo(category);
   const currentPole = poleInfo(pole);
   const goalPct = Math.min(100, Math.round((todayMinutes / DAILY_GOAL) * 100));
+  const visibleCategories = reportPoleFilter === 'all' ? ALL_CATEGORIES : ALL_CATEGORIES.filter(c => c.poleId === reportPoleFilter);
 
   return (
     <div className="app">
@@ -431,6 +433,14 @@ export default function EditionsBookmark() {
           <>
             <div className="card">
               <div className="section-title">Cadence des 14 derniers jours</div>
+              <div className="pole-row">
+                <button className={`pole-btn ${reportPoleFilter === 'all' ? 'active' : ''}`} onClick={() => setReportPoleFilter('all')}>Tous les pôles</button>
+                {POLES.map(p => (
+                  <button key={p.id} className={`pole-btn ${reportPoleFilter === p.id ? 'active' : ''}`} onClick={() => setReportPoleFilter(p.id)}>
+                    {p.label}
+                  </button>
+                ))}
+              </div>
               <ResponsiveContainer width="100%" height={230}>
                 <BarChart data={reportData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                   <CartesianGrid vertical={false} stroke="var(--rule)" />
@@ -438,13 +448,13 @@ export default function EditionsBookmark() {
                   <YAxis tick={{ fontFamily: 'IBM Plex Mono', fontSize: 10, fill: 'var(--ink-soft)' }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ fontFamily: 'Inter', fontSize: 12, border: '1px solid #21201a' }}
                     formatter={(value, name) => [fmtHM(value), name]} />
-                  {ALL_CATEGORIES.map(c => (
+                  {visibleCategories.map(c => (
                     <Bar key={c.id} dataKey={c.id} stackId="a" fill={c.color} name={c.label} radius={0} />
                   ))}
                 </BarChart>
               </ResponsiveContainer>
               <div className="legend">
-                {ALL_CATEGORIES.map(c => (
+                {visibleCategories.map(c => (
                   <div className="legend-item" key={c.id}>
                     <span className="dot" style={{ background: c.color }} />{c.label}
                   </div>
