@@ -116,6 +116,7 @@ export default function SousPresse() {
   const [lastStamped, setLastStamped] = useState(null);
   const [tooShort, setTooShort] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [exportPeriod, setExportPeriod] = useState('week');
   const intervalRef = useRef(null);
 
   useEffect(() => {
@@ -194,6 +195,34 @@ export default function SousPresse() {
     entries.sort((a, b) => b[1] - a[1]);
     return catInfo(entries[0][0]);
   }, [sessions]);
+
+  const periodSessions = useMemo(() => {
+    let cutoff;
+    if (exportPeriod === 'week') {
+      const d = new Date(); d.setDate(d.getDate() - 6);
+      cutoff = todayStr(d);
+    } else {
+      const d = new Date();
+      cutoff = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+    }
+    return sessions.filter(s => s.date >= cutoff).sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+  }, [sessions, exportPeriod]);
+
+  const periodStats = useMemo(() => {
+    const totalMinutes = periodSessions.reduce((a, s) => a + s.minutes, 0);
+    const count = periodSessions.length;
+    const avg = count ? Math.round(totalMinutes / count) : 0;
+    const byCat = CATEGORIES.map(c => {
+      const catSessions = periodSessions.filter(s => s.category === c.id);
+      const minutes = catSessions.reduce((a, s) => a + s.minutes, 0);
+      return { ...c, minutes, count: catSessions.length, pct: totalMinutes ? Math.round((minutes / totalMinutes) * 100) : 0 };
+    }).filter(c => c.minutes > 0).sort((a, b) => b.minutes - a.minutes);
+    return { totalMinutes, count, avg, byCat };
+  }, [periodSessions]);
+
+  const periodLabel = exportPeriod === 'week'
+    ? '7 derniers jours'
+    : new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 
   const cat = catInfo(category);
   const goalPct = Math.min(100, Math.round((todayMinutes / DAILY_GOAL) * 100));
@@ -278,9 +307,24 @@ export default function SousPresse() {
         .reset-link{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-soft);
           background:none; border:none; cursor:pointer; text-decoration:underline; margin-top:14px; }
         @media (max-width:520px){ .timer-digits{ font-size:56px; } .masthead h1{ font-size:26px; } }
+        .print-report{ display:none; }
+        .pr-title{ font-family:'Fraunces',serif; font-size:22px; margin:0 0 4px; }
+        .pr-meta{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:#333; margin-bottom:18px; }
+        .pr-summary{ display:flex; gap:26px; margin-bottom:20px; font-family:'Inter',sans-serif; font-size:13px; }
+        .pr-summary strong{ font-family:'Fraunces',serif; font-size:16px; display:block; }
+        .pr-table{ width:100%; border-collapse:collapse; margin-bottom:24px; font-family:'Inter',sans-serif; font-size:12px; }
+        .pr-table th, .pr-table td{ border:1px solid #999; padding:5px 8px; text-align:left; }
+        .pr-table th{ background:#eee; }
+        @media print{
+          .no-print{ display:none !important; }
+          .print-report{ display:block; }
+          body, .app{ background:#fff !important; padding:0 !important; }
+          .app::before{ display:none !important; }
+          @page{ margin:16mm; }
+        }
       `}</style>
 
-      <div className="wrap">
+      <div className="wrap no-print">
         <div className="masthead">
           <div>
             <div className="kicker">Éditions · Pôle production</div>
@@ -413,12 +457,49 @@ export default function SousPresse() {
                 )
               )}
             </div>
+            <div className="card">
+              <div className="section-title">Exporter</div>
+              <div className="cat-row">
+                <button className={`cat-btn ${exportPeriod === 'week' ? 'active' : ''}`} onClick={() => setExportPeriod('week')}>7 derniers jours</button>
+                <button className={`cat-btn ${exportPeriod === 'month' ? 'active' : ''}`} onClick={() => setExportPeriod('month')}>Ce mois-ci</button>
+              </div>
+              <div className="controls" style={{ justifyContent: 'flex-start', marginTop: 4 }}>
+                <button className="btn secondary" onClick={() => window.print()}><Printer size={15} /> Exporter en PDF</button>
+              </div>
+            </div>
           </>
         )}
       </div>
 
+      <div className="print-report">
+        <h1 className="pr-title">Sous presse — Rapport</h1>
+        <div className="pr-meta">Période : {periodLabel} · Généré le {new Date().toLocaleDateString('fr-FR')}</div>
+        <div className="pr-summary">
+          <div><strong>{periodStats.totalMinutes} min</strong>au total</div>
+          <div><strong>{periodStats.count}</strong>sessions</div>
+          <div><strong>{periodStats.avg} min</strong>en moyenne par session</div>
+        </div>
+        <table className="pr-table">
+          <thead><tr><th>Catégorie</th><th>Minutes</th><th>Sessions</th><th>Part</th></tr></thead>
+          <tbody>
+            {periodStats.byCat.map(c => (
+              <tr key={c.id}><td>{c.label}</td><td>{c.minutes}</td><td>{c.count}</td><td>{c.pct}%</td></tr>
+            ))}
+            {periodStats.byCat.length === 0 && <tr><td colSpan="4">Aucune session sur cette période.</td></tr>}
+          </tbody>
+        </table>
+        <table className="pr-table">
+          <thead><tr><th>Date</th><th>Catégorie</th><th>Entrée</th><th>Sortie</th><th>Durée</th></tr></thead>
+          <tbody>
+            {periodSessions.map(s => (
+              <tr key={s.id}><td>{s.date}</td><td>{catInfo(s.category).label}</td><td>{s.entryTime}</td><td>{s.exitTime}</td><td>{s.minutes} min</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       {showStamp && lastStamped && (
-        <div className="stamp-overlay">
+        <div className="stamp-overlay no-print">
           <div className="stamp-pop">
             <StampSVG color={catInfo(lastStamped.category).color} label={catInfo(lastStamped.category).label} minutes={lastStamped.minutes} />
           </div>
