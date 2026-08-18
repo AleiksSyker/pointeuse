@@ -114,6 +114,7 @@ export default function SousPresse() {
   const [entryTime, setEntryTime] = useState(null);
   const [showStamp, setShowStamp] = useState(false);
   const [lastStamped, setLastStamped] = useState(null);
+  const [tooShort, setTooShort] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
   const intervalRef = useRef(null);
 
@@ -154,11 +155,17 @@ export default function SousPresse() {
   }
 
   function pointerSortie() {
-    const minutes = Math.floor(elapsed / 60);
+    const secs = elapsed;
+    const minutes = Math.max(1, Math.round(secs / 60));
     const exit = new Date().toTimeString().slice(0, 5);
     clearInterval(intervalRef.current);
     setRunning(false); setPaused(false);
-    if (minutes >= 1) finalizeSession(minutes, entryTime, exit);
+    if (secs >= 10) {
+      finalizeSession(minutes, entryTime, exit);
+    } else {
+      setTooShort(true);
+      setTimeout(() => setTooShort(false), 2500);
+    }
     setElapsed(0);
   }
 
@@ -235,6 +242,7 @@ export default function SousPresse() {
         .clock-card .cc-label{ font-family:'IBM Plex Mono',monospace; font-size:10px; text-transform:uppercase;
           letter-spacing:1px; color:var(--ink-soft); }
         .clock-card .cc-value{ font-family:'IBM Plex Mono',monospace; font-size:15px; font-weight:600; }
+        .too-short{ font-family:'IBM Plex Mono',monospace; font-size:12px; color:#B4432D; margin-top:12px; }
         .timer-digits{ font-family:'IBM Plex Mono',monospace; font-size:76px; font-weight:600; font-variant-numeric:tabular-nums;
           letter-spacing:2px; line-height:1; }
         .timer-cat{ font-family:'Fraunces',serif; font-size:16px; margin-top:6px; color:var(--ink-soft); }
@@ -320,6 +328,7 @@ export default function SousPresse() {
                 <div className="controls">
                   <button className="btn" onClick={pointerEntree}><Play size={15} /> Pointer l'entrée</button>
                 </div>
+                {tooShort && <div className="too-short">Session trop courte (moins de 10 secondes) — non enregistrée.</div>}
               </>
             ) : (
               <div className="timer-zone">
