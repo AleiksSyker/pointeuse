@@ -343,7 +343,7 @@ export default function EditionsBookmark() {
           </div>
           <div className="tabs">
             <button className={`tab ${view === 'focus' ? 'active' : ''}`} onClick={() => setView('focus')}>
-              <Printer size={13} /> Atelier
+              <Printer size={13} /> Activité
             </button>
             <button className={`tab ${view === 'rapport' ? 'active' : ''}`} onClick={() => setView('rapport')}>
               <BarChart3 size={13} /> Rapport
