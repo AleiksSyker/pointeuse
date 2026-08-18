@@ -1,43 +1,57 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Play, Pause, Square, Flame, Award, BarChart3, Printer, Check, Lock } from 'lucide-react';
+import { Play, Pause, Square, Flame, BarChart3, Printer } from 'lucide-react';
 
-const STORAGE_KEY = 'sous-presse-sessions';
-
-const CATEGORIES = [
-  { id: 'maquette', label: 'Maquette interne', color: '#3A362F' },
-  { id: 'couverture', label: 'Couverture', color: '#B4432D' },
-  { id: 'illustration', label: 'Illustrations', color: '#3B5D42' },
-  { id: 'correction', label: 'Corrections / BAT', color: '#5B6770' },
-  { id: 'autre', label: 'Autre', color: '#A6803C' },
+const POLES = [
+  {
+    id: 'coordination',
+    label: 'Pôle coordination',
+    color: '#5B6770',
+    categories: [
+      { id: 'mails', label: 'Gestion mails', color: '#5B6770' },
+      { id: 'matrices', label: 'Matrices & tableaux Edantes / Hachette / boutique', color: '#A6803C' },
+      { id: 'edito', label: 'Édito', color: '#B4432D' },
+      { id: 'coord-gen', label: 'Coordination', color: '#3B5D42' },
+      { id: 'retroplannings', label: 'Rétroplannings', color: '#4A5D8A' },
+      { id: 'collectors', label: 'Gestion collectors & beaux-livres', color: '#7A4B6B' },
+      { id: 'administratif', label: 'Administratif', color: '#6B6560' },
+      { id: 'cycles', label: 'Préparation des cycles', color: '#9C5B3C' },
+      { id: 'reunions-ext', label: 'Réunions externes', color: '#3A7D7A' },
+      { id: 'reunions-int', label: 'Réunions & appels internes', color: '#8A3B4A' },
+    ],
+  },
+  {
+    id: 'production',
+    label: 'Pôle production',
+    color: '#B4432D',
+    categories: [
+      { id: 'maquette', label: 'Maquette', color: '#3A362F' },
+      { id: 'epubs', label: 'Epubs', color: '#556B4E' },
+      { id: 'couverture', label: 'Couverture', color: '#B0713C' },
+      { id: 'graph', label: 'Graph', color: '#4A4A78' },
+      { id: 'correction', label: 'Correction / BAT', color: '#8B6F47' },
+    ],
+  },
 ];
 
-const LEVELS = [
-  { title: 'Stagiaire', min: 0 },
-  { title: 'Correcteur·rice', min: 100 },
-  { title: 'Metteur·euse en pages', min: 300 },
-  { title: 'Maquettiste', min: 700 },
-  { title: 'Chef·fe de fabrication', min: 1500 },
-  { title: 'Maître imprimeur', min: 3000 },
-];
+const ALL_CATEGORIES = POLES.flatMap(p => p.categories.map(c => ({ ...c, poleId: p.id, poleLabel: p.label })));
 
 const DAILY_GOAL = 120;
 
 function todayStr(d = new Date()) { return d.toISOString().slice(0, 10); }
-function fmt(sec) {
+function fmtClock(sec) {
   const m = Math.floor(sec / 60), s = sec % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
-function catInfo(id) { return CATEGORIES.find(c => c.id === id) || CATEGORIES[4]; }
-
-function getLevelInfo(xp) {
-  let current = LEVELS[0], next = LEVELS[1];
-  for (let i = 0; i < LEVELS.length; i++) {
-    if (xp >= LEVELS[i].min) { current = LEVELS[i]; next = LEVELS[i + 1] || null; }
-  }
-  const progress = next ? Math.min(100, Math.round(((xp - current.min) / (next.min - current.min)) * 100)) : 100;
-  return { current, next, progress };
+function fmtHM(totalMin) {
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} h`;
+  return `${h} h ${m} min`;
 }
+function catInfo(id) { return ALL_CATEGORIES.find(c => c.id === id) || ALL_CATEGORIES[0]; }
+function poleInfo(id) { return POLES.find(p => p.id === id) || POLES[0]; }
 
 function computeStreak(dates) {
   const uniq = Array.from(new Set(dates)).sort().reverse();
@@ -55,18 +69,6 @@ function computeStreak(dates) {
   return streak;
 }
 
-function computeBadges(sessions, xp, streak) {
-  const cats = new Set(sessions.map(s => s.category));
-  const longest = sessions.reduce((m, s) => Math.max(m, s.minutes), 0);
-  return [
-    { id: 'first', label: 'Premier tirage', desc: 'Terminer une première session', unlocked: sessions.length >= 1 },
-    { id: 'streak7', label: 'Série de 7', desc: '7 jours de suite sous presse', unlocked: streak >= 7 },
-    { id: 'xp500', label: '500 pages', desc: '500 minutes cumulées', unlocked: xp >= 500 },
-    { id: 'marathon', label: 'Marathon', desc: 'Une session de 90 min ou plus', unlocked: longest >= 90 },
-    { id: 'allcats', label: 'Toutes les casquettes', desc: 'Travailler dans les 5 catégories', unlocked: cats.size >= 5 },
-  ];
-}
-
 function buildReportData(sessions) {
   const days = [];
   for (let i = 13; i >= 0; i--) {
@@ -74,40 +76,37 @@ function buildReportData(sessions) {
     const key = todayStr(d);
     const label = d.toLocaleDateString('fr-FR', { weekday: 'short' }).replace('.', '');
     const entry = { date: key, label };
-    CATEGORIES.forEach(c => { entry[c.id] = 0; });
-    sessions.filter(s => s.date === key).forEach(s => { entry[s.category] += s.minutes; });
+    POLES.forEach(p => { entry[p.id] = 0; });
+    sessions.filter(s => s.date === key).forEach(s => {
+      const c = catInfo(s.category);
+      if (c) entry[c.poleId] = (entry[c.poleId] || 0) + s.minutes;
+    });
     days.push(entry);
   }
   return days;
 }
 
-const StampSVG = ({ color, label, minutes, small }) => {
-  const size = small ? 44 : 190;
-  return (
-    <svg viewBox="0 0 200 200" width={size} height={size} style={{ transform: 'rotate(-9deg)' }}>
-      <circle cx="100" cy="100" r="88" fill="none" stroke={color} strokeWidth={small ? 5 : 3} strokeDasharray="3 3" opacity="0.9" />
-      <circle cx="100" cy="100" r="74" fill="none" stroke={color} strokeWidth={small ? 4 : 2} opacity="0.9" />
-      {!small && (
-        <>
-          <defs>
-            <path id="curve" d="M 100,100 m -62,0 a 62,62 0 1,1 124,0 a 62,62 0 1,1 -124,0" />
-          </defs>
-          <text fill={color} fontSize="15" fontFamily="'IBM Plex Mono', monospace" letterSpacing="2" fontWeight="600">
-            <textPath href="#curve" startOffset="50%" textAnchor="middle">BON À TIRER</textPath>
-          </text>
-          <text x="100" y="102" textAnchor="middle" fill={color} fontSize="13" fontFamily="'Fraunces', serif" fontWeight="600">{label}</text>
-          <text x="100" y="122" textAnchor="middle" fill={color} fontSize="11" fontFamily="'IBM Plex Mono', monospace">{minutes} min</text>
-        </>
-      )}
-    </svg>
-  );
-};
+const StampSVG = ({ color, label, minutes }) => (
+  <svg viewBox="0 0 200 200" width={190} height={190} style={{ transform: 'rotate(-9deg)' }}>
+    <circle cx="100" cy="100" r="88" fill="none" stroke={color} strokeWidth={3} strokeDasharray="3 3" opacity="0.9" />
+    <circle cx="100" cy="100" r="74" fill="none" stroke={color} strokeWidth={2} opacity="0.9" />
+    <defs>
+      <path id="curve" d="M 100,100 m -62,0 a 62,62 0 1,1 124,0 a 62,62 0 1,1 -124,0" />
+    </defs>
+    <text fill={color} fontSize="15" fontFamily="'IBM Plex Mono', monospace" letterSpacing="2" fontWeight="600">
+      <textPath href="#curve" startOffset="50%" textAnchor="middle">BON À TIRER</textPath>
+    </text>
+    <text x="100" y="102" textAnchor="middle" fill={color} fontSize="12" fontFamily="'Fraunces', serif" fontWeight="600">{label}</text>
+    <text x="100" y="122" textAnchor="middle" fill={color} fontSize="11" fontFamily="'IBM Plex Mono', monospace">{minutes} min</text>
+  </svg>
+);
 
-export default function SousPresse() {
+export default function EditionsBookmark() {
   const [sessions, setSessions] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [view, setView] = useState('focus');
-  const [category, setCategory] = useState(CATEGORIES[0].id);
+  const [pole, setPole] = useState(POLES[0].id);
+  const [category, setCategory] = useState(POLES[0].categories[0].id);
   const [running, setRunning] = useState(false);
   const [paused, setPaused] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -119,7 +118,9 @@ export default function SousPresse() {
   const [exportPeriod, setExportPeriod] = useState('week');
   const intervalRef = useRef(null);
 
-  useEffect(() => {
+  const STORAGE_KEY = 'eb-sessions';
+
+useEffect(() => {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) setSessions(JSON.parse(raw));
@@ -146,6 +147,11 @@ export default function SousPresse() {
     setLastStamped(session);
     setShowStamp(true);
     setTimeout(() => setShowStamp(false), 1700);
+  }
+
+  function choosePole(p) {
+    setPole(p.id);
+    setCategory(p.categories[0].id);
   }
 
   function pointerEntree() {
@@ -176,10 +182,7 @@ export default function SousPresse() {
     setResetConfirm(false);
   }
 
-  const xp = useMemo(() => sessions.reduce((a, s) => a + s.minutes, 0), [sessions]);
-  const levelInfo = useMemo(() => getLevelInfo(xp), [xp]);
   const streak = useMemo(() => computeStreak(sessions.map(s => s.date)), [sessions]);
-  const badges = useMemo(() => computeBadges(sessions, xp, streak), [sessions, xp, streak]);
   const todayMinutes = useMemo(() => sessions.filter(s => s.date === todayStr()).reduce((a, s) => a + s.minutes, 0), [sessions]);
   const weekMinutes = useMemo(() => {
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 6);
@@ -212,12 +215,16 @@ export default function SousPresse() {
     const totalMinutes = periodSessions.reduce((a, s) => a + s.minutes, 0);
     const count = periodSessions.length;
     const avg = count ? Math.round(totalMinutes / count) : 0;
-    const byCat = CATEGORIES.map(c => {
-      const catSessions = periodSessions.filter(s => s.category === c.id);
-      const minutes = catSessions.reduce((a, s) => a + s.minutes, 0);
-      return { ...c, minutes, count: catSessions.length, pct: totalMinutes ? Math.round((minutes / totalMinutes) * 100) : 0 };
-    }).filter(c => c.minutes > 0).sort((a, b) => b.minutes - a.minutes);
-    return { totalMinutes, count, avg, byCat };
+    const byPole = POLES.map(p => {
+      const cats = p.categories.map(c => {
+        const catSessions = periodSessions.filter(s => s.category === c.id);
+        const minutes = catSessions.reduce((a, s) => a + s.minutes, 0);
+        return { ...c, minutes, count: catSessions.length, pct: totalMinutes ? Math.round((minutes / totalMinutes) * 100) : 0 };
+      }).filter(c => c.minutes > 0).sort((a, b) => b.minutes - a.minutes);
+      const total = cats.reduce((a, c) => a + c.minutes, 0);
+      return { ...p, categories: cats, total };
+    }).filter(p => p.categories.length > 0);
+    return { totalMinutes, count, avg, byPole };
   }, [periodSessions]);
 
   const periodLabel = exportPeriod === 'week'
@@ -225,6 +232,7 @@ export default function SousPresse() {
     : new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 
   const cat = catInfo(category);
+  const currentPole = poleInfo(pole);
   const goalPct = Math.min(100, Math.round((todayMinutes / DAILY_GOAL) * 100));
 
   return (
@@ -241,10 +249,10 @@ export default function SousPresse() {
           background-image: radial-gradient(circle at 20% 30%, var(--ink) 0.5px, transparent 0.5px),
                              radial-gradient(circle at 70% 65%, var(--ink) 0.5px, transparent 0.5px);
           background-size: 3px 3px, 4px 4px; }
-        .wrap{ max-width:760px; margin:0 auto; position:relative; }
+        .wrap{ max-width:780px; margin:0 auto; position:relative; }
         .masthead{ display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:22px;
           border-bottom:2px solid var(--ink); padding-bottom:12px; flex-wrap:wrap; gap:10px; }
-        .masthead h1{ font-family:'Fraunces',serif; font-size:32px; font-weight:600; margin:0; letter-spacing:-0.5px; }
+        .masthead h1{ font-family:'Fraunces',serif; font-size:30px; font-weight:600; margin:0; letter-spacing:-0.5px; }
         .masthead .kicker{ font-family:'IBM Plex Mono',monospace; font-size:11px; text-transform:uppercase;
           letter-spacing:1.5px; color:var(--ink-soft); }
         .tabs{ display:flex; gap:4px; }
@@ -261,10 +269,14 @@ export default function SousPresse() {
         .goal-bar{ height:5px; background:var(--rule); margin-top:6px; }
         .goal-fill{ height:100%; background:var(--ink); transition:width 0.4s; }
         .card{ background:var(--card); border:1px solid var(--rule); padding:26px; margin-bottom:20px; }
+        .pole-row{ display:flex; gap:8px; margin-bottom:18px; }
+        .pole-btn{ font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:0.5px; padding:9px 16px;
+          border:1.5px solid var(--rule); background:transparent; cursor:pointer; flex:1; text-align:center; }
+        .pole-btn.active{ border-color:var(--ink); background:var(--ink); color:var(--paper); font-weight:600; }
         .cat-row{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
         .cat-btn{ font-family:'Inter',sans-serif; font-size:13px; padding:8px 13px; border:1.5px solid var(--rule);
           background:transparent; cursor:pointer; display:flex; align-items:center; gap:7px; color:var(--ink); }
-        .cat-btn .dot{ width:9px; height:9px; border-radius:50%; }
+        .cat-btn .dot{ width:9px; height:9px; border-radius:50%; flex-shrink:0; }
         .cat-btn.active{ border-color:var(--ink); font-weight:600; }
         .timer-zone{ text-align:center; padding:20px 0 8px; }
         .clock-card{ border:1.5px dashed var(--ink-soft); padding:14px 20px; display:inline-block; margin-top:14px; }
@@ -287,32 +299,29 @@ export default function SousPresse() {
         .stamp-pop{ animation: stampIn 1.7s ease-out forwards; }
         @keyframes stampIn{ 0%{ transform:scale(2.4); opacity:0; } 18%{ transform:scale(1); opacity:1; }
           75%{ transform:scale(1); opacity:1; } 100%{ transform:scale(1); opacity:0; } }
-        .level-row{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-        .level-title{ font-family:'Fraunces',serif; font-size:17px; font-weight:600; }
-        .level-bar{ height:6px; background:var(--rule); }
-        .level-fill{ height:100%; background:var(--ink); transition:width 0.5s; }
         .section-title{ font-family:'IBM Plex Mono',monospace; font-size:11px; text-transform:uppercase;
           letter-spacing:1.5px; color:var(--ink-soft); margin-bottom:12px; }
-        .badges-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
-        .badge{ border:1px solid var(--rule); padding:12px; display:flex; flex-direction:column; gap:4px; }
-        .badge.locked{ opacity:0.4; }
-        .badge-top{ display:flex; align-items:center; gap:6px; font-weight:600; font-size:13px; }
-        .badge-desc{ font-size:11px; color:var(--ink-soft); }
         .log-row{ display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--rule);
           font-size:13px; }
         .log-dot{ width:10px; height:10px; border-radius:50%; flex-shrink:0; }
         .log-cat{ flex:1; }
-        .log-meta{ font-family:'IBM Plex Mono',monospace; color:var(--ink-soft); font-size:12px; }
+        .log-meta{ font-family:'IBM Plex Mono',monospace; color:var(--ink-soft); font-size:12px; white-space:nowrap; }
         .empty{ color:var(--ink-soft); font-size:13px; padding:16px 0; }
         .reset-link{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-soft);
-          background:none; border:none; cursor:pointer; text-decoration:underline; margin-top:14px; }
-        @media (max-width:520px){ .timer-digits{ font-size:56px; } .masthead h1{ font-size:26px; } }
+          background:none; border:none; cursor:pointer; text-decoration:underline; margin-top:14px; display:block; }
+        .pole-block{ margin-bottom:18px; }
+        .pole-block:last-child{ margin-bottom:0; }
+        .pole-block-title{ font-family:'Fraunces',serif; font-size:14px; font-weight:600; margin-bottom:6px;
+          display:flex; justify-content:space-between; }
+        .mini-log-row{ display:flex; align-items:center; gap:8px; font-size:12px; padding:5px 0; border-bottom:1px solid var(--rule); }
+        @media (max-width:520px){ .timer-digits{ font-size:56px; } .masthead h1{ font-size:24px; } }
         .print-report{ display:none; }
         .pr-title{ font-family:'Fraunces',serif; font-size:22px; margin:0 0 4px; }
         .pr-meta{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:#333; margin-bottom:18px; }
         .pr-summary{ display:flex; gap:26px; margin-bottom:20px; font-family:'Inter',sans-serif; font-size:13px; }
         .pr-summary strong{ font-family:'Fraunces',serif; font-size:16px; display:block; }
-        .pr-table{ width:100%; border-collapse:collapse; margin-bottom:24px; font-family:'Inter',sans-serif; font-size:12px; }
+        .pr-pole-title{ font-family:'Fraunces',serif; font-size:15px; margin:18px 0 6px; }
+        .pr-table{ width:100%; border-collapse:collapse; margin-bottom:14px; font-family:'Inter',sans-serif; font-size:12px; }
         .pr-table th, .pr-table td{ border:1px solid #999; padding:5px 8px; text-align:left; }
         .pr-table th{ background:#eee; }
         @media print{
@@ -327,8 +336,8 @@ export default function SousPresse() {
       <div className="wrap no-print">
         <div className="masthead">
           <div>
-            <div className="kicker">Éditions · Pôle production</div>
-            <h1>Sous presse</h1>
+            <div className="kicker">Suivi d'activité</div>
+            <h1>Editions Bookmark</h1>
           </div>
           <div className="tabs">
             <button className={`tab ${view === 'focus' ? 'active' : ''}`} onClick={() => setView('focus')}>
@@ -342,17 +351,12 @@ export default function SousPresse() {
 
         <div className="status-bar">
           <div className="stat-chip">
-            <div className="label">Niveau</div>
-            <div className="value">{levelInfo.current.title}</div>
-            <div className="level-bar"><div className="level-fill" style={{ width: `${levelInfo.progress}%` }} /></div>
-          </div>
-          <div className="stat-chip">
             <div className="label">Série</div>
             <div className="value"><Flame size={16} /> {streak} {streak > 1 ? 'jours' : 'jour'}</div>
           </div>
           <div className="stat-chip">
             <div className="label">Aujourd'hui</div>
-            <div className="value">{todayMinutes} min</div>
+            <div className="value">{fmtHM(todayMinutes)}</div>
             <div className="goal-bar"><div className="goal-fill" style={{ width: `${goalPct}%` }} /></div>
           </div>
         </div>
@@ -361,9 +365,17 @@ export default function SousPresse() {
           <div className="card">
             {!running ? (
               <>
+                <div className="section-title">Pôle</div>
+                <div className="pole-row">
+                  {POLES.map(p => (
+                    <button key={p.id} className={`pole-btn ${pole === p.id ? 'active' : ''}`} onClick={() => choosePole(p)}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
                 <div className="section-title">Type de travail</div>
                 <div className="cat-row">
-                  {CATEGORIES.map(c => (
+                  {currentPole.categories.map(c => (
                     <button key={c.id} className={`cat-btn ${category === c.id ? 'active' : ''}`} onClick={() => setCategory(c.id)}>
                       <span className="dot" style={{ background: c.color }} />{c.label}
                     </button>
@@ -380,7 +392,7 @@ export default function SousPresse() {
                   {!paused && <span className="pulse-dot" style={{ background: cat.color }} />}
                   {cat.label} {paused && '· en pause'}
                 </div>
-                <div className="timer-digits">{fmt(elapsed)}</div>
+                <div className="timer-digits">{fmtClock(elapsed)}</div>
                 <div className="clock-card">
                   <div className="cc-label">Entrée pointée</div>
                   <div className="cc-value">{entryTime}</div>
@@ -406,7 +418,7 @@ export default function SousPresse() {
                 <div className="log-row" key={s.id}>
                   <span className="log-dot" style={{ background: c.color }} />
                   <span className="log-cat">{c.label}</span>
-                  <span className="log-meta">{s.minutes} min · {s.entryTime}–{s.exitTime} · {s.date}</span>
+                  <span className="log-meta">{fmtHM(s.minutes)} · {s.entryTime}–{s.exitTime} · {s.date}</span>
                 </div>
               );
             })}
@@ -422,30 +434,30 @@ export default function SousPresse() {
                   <CartesianGrid vertical={false} stroke="var(--rule)" />
                   <XAxis dataKey="label" tick={{ fontFamily: 'IBM Plex Mono', fontSize: 10, fill: 'var(--ink-soft)' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontFamily: 'IBM Plex Mono', fontSize: 10, fill: 'var(--ink-soft)' }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ fontFamily: 'Inter', fontSize: 12, border: '1px solid #21201a' }} />
-                  {CATEGORIES.map(c => (
-                    <Bar key={c.id} dataKey={c.id} stackId="a" fill={c.color} name={c.label} radius={0} />
+                  <Tooltip contentStyle={{ fontFamily: 'Inter', fontSize: 12, border: '1px solid #21201a' }}
+                    formatter={(value, name) => [fmtHM(value), name]} />
+                  {POLES.map(p => (
+                    <Bar key={p.id} dataKey={p.id} stackId="a" fill={p.color} name={p.label} radius={0} />
                   ))}
                 </BarChart>
               </ResponsiveContainer>
             </div>
 
             <div className="status-bar">
-              <div className="stat-chip"><div className="label">Cette semaine</div><div className="value">{weekMinutes} min</div></div>
+              <div className="stat-chip"><div className="label">Cette semaine</div><div className="value">{fmtHM(weekMinutes)}</div></div>
               <div className="stat-chip"><div className="label">Sessions totales</div><div className="value">{sessions.length}</div></div>
               <div className="stat-chip"><div className="label">Catégorie dominante</div>
                 <div className="value">{dominantCategory ? dominantCategory.label : '—'}</div></div>
             </div>
 
             <div className="card">
-              <div className="section-title">Cachets</div>
-              <div className="badges-grid">
-                {badges.map(b => (
-                  <div className={`badge ${b.unlocked ? '' : 'locked'}`} key={b.id}>
-                    <div className="badge-top">{b.unlocked ? <Award size={14} /> : <Lock size={12} />} {b.label}</div>
-                    <div className="badge-desc">{b.desc}</div>
-                  </div>
-                ))}
+              <div className="section-title">Exporter</div>
+              <div className="cat-row">
+                <button className={`cat-btn ${exportPeriod === 'week' ? 'active' : ''}`} onClick={() => setExportPeriod('week')}>7 derniers jours</button>
+                <button className={`cat-btn ${exportPeriod === 'month' ? 'active' : ''}`} onClick={() => setExportPeriod('month')}>Ce mois-ci</button>
+              </div>
+              <div className="controls" style={{ justifyContent: 'flex-start', marginTop: 4 }}>
+                <button className="btn secondary" onClick={() => window.print()}><Printer size={15} /> Exporter en PDF</button>
               </div>
               {sessions.length > 0 && (
                 resetConfirm ? (
@@ -457,37 +469,32 @@ export default function SousPresse() {
                 )
               )}
             </div>
-            <div className="card">
-              <div className="section-title">Exporter</div>
-              <div className="cat-row">
-                <button className={`cat-btn ${exportPeriod === 'week' ? 'active' : ''}`} onClick={() => setExportPeriod('week')}>7 derniers jours</button>
-                <button className={`cat-btn ${exportPeriod === 'month' ? 'active' : ''}`} onClick={() => setExportPeriod('month')}>Ce mois-ci</button>
-              </div>
-              <div className="controls" style={{ justifyContent: 'flex-start', marginTop: 4 }}>
-                <button className="btn secondary" onClick={() => window.print()}><Printer size={15} /> Exporter en PDF</button>
-              </div>
-            </div>
           </>
         )}
       </div>
 
       <div className="print-report">
-        <h1 className="pr-title">Sous presse — Rapport</h1>
+        <h1 className="pr-title">Editions Bookmark — Rapport</h1>
         <div className="pr-meta">Période : {periodLabel} · Généré le {new Date().toLocaleDateString('fr-FR')}</div>
         <div className="pr-summary">
-          <div><strong>{periodStats.totalMinutes} min</strong>au total</div>
+          <div><strong>{fmtHM(periodStats.totalMinutes)}</strong>au total</div>
           <div><strong>{periodStats.count}</strong>sessions</div>
-          <div><strong>{periodStats.avg} min</strong>en moyenne par session</div>
+          <div><strong>{fmtHM(periodStats.avg)}</strong>en moyenne par session</div>
         </div>
-        <table className="pr-table">
-          <thead><tr><th>Catégorie</th><th>Minutes</th><th>Sessions</th><th>Part</th></tr></thead>
-          <tbody>
-            {periodStats.byCat.map(c => (
-              <tr key={c.id}><td>{c.label}</td><td>{c.minutes}</td><td>{c.count}</td><td>{c.pct}%</td></tr>
-            ))}
-            {periodStats.byCat.length === 0 && <tr><td colSpan="4">Aucune session sur cette période.</td></tr>}
-          </tbody>
-        </table>
+        {periodStats.byPole.map(p => (
+          <div key={p.id}>
+            <div className="pr-pole-title">{p.label} — {fmtHM(p.total)}</div>
+            <table className="pr-table">
+              <thead><tr><th>Catégorie</th><th>Temps</th><th>Sessions</th><th>Part</th></tr></thead>
+              <tbody>
+                {p.categories.map(c => (
+                  <tr key={c.id}><td>{c.label}</td><td>{fmtHM(c.minutes)}</td><td>{c.count}</td><td>{c.pct}%</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
+        {periodStats.byPole.length === 0 && <p>Aucune session sur cette période.</p>}
       </div>
 
       {showStamp && lastStamped && (
