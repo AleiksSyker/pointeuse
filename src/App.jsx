@@ -488,14 +488,6 @@ export default function SousPresse() {
             {periodStats.byCat.length === 0 && <tr><td colSpan="4">Aucune session sur cette période.</td></tr>}
           </tbody>
         </table>
-        <table className="pr-table">
-          <thead><tr><th>Date</th><th>Catégorie</th><th>Entrée</th><th>Sortie</th><th>Durée</th></tr></thead>
-          <tbody>
-            {periodSessions.map(s => (
-              <tr key={s.id}><td>{s.date}</td><td>{catInfo(s.category).label}</td><td>{s.entryTime}</td><td>{s.exitTime}</td><td>{s.minutes} min</td></tr>
-            ))}
-          </tbody>
-        </table>
       </div>
 
       {showStamp && lastStamped && (
